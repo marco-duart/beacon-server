@@ -12,6 +12,7 @@ export class EventResponseDto {
 
   @ApiPropertyOptional({
     oneOf: [{ type: 'string' }, { type: 'array', items: { type: 'object' } }],
+    nullable: true,
   })
   stacktrace!: string | Record<string, unknown>[] | null;
 
