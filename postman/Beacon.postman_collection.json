@@ -1,0 +1,1096 @@
+{
+  "info": {
+    "_postman_id": "d1f7b27a-693a-48df-b9de-a1ccaea09df9",
+    "name": "Beacon API",
+    "description": "Self-hosted error tracking API. Run \"Auth > Login\" then \"Systems > Create System\" first (Collection Runner works top-to-bottom) to populate {{accessToken}} and {{systemApiKey}}, then fire any request in \"Ingestion\". See beacon-server/postman/README.md.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3000",
+      "type": "string"
+    },
+    {
+      "key": "adminEmail",
+      "value": "admin@beacon.dev",
+      "type": "string"
+    },
+    {
+      "key": "adminPassword",
+      "value": "super-secret-123",
+      "type": "string"
+    },
+    {
+      "key": "accessToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "systemId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "systemApiKey",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "issueId",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "1. Auth",
+      "item": [
+        {
+          "name": "Login (admin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "login"
+              ]
+            },
+            "description": "Run this first. Create the admin beforehand with `npm run seed:admin -- --email {{adminEmail}} --password {{adminPassword}}`.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{adminEmail}}\",\n  \"password\": \"{{adminPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "const loginData = pm.response.json();",
+                  "pm.collectionVariables.set('accessToken', loginData.accessToken);",
+                  "pm.test('accessToken captured', () => pm.expect(loginData.accessToken).to.be.a('string'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Who am I (GET /auth/me)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "me"
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "2. Systems",
+      "item": [
+        {
+          "name": "Create System",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/systems",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "systems"
+              ]
+            },
+            "description": "Run after Login. Captures {{systemApiKey}} and {{systemId}} for the Ingestion folder.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Checkout API\",\n  \"retentionPolicy\": \"30d\",\n  \"notifyEmails\": \"oncall@example.com\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 201', () => pm.response.to.have.status(201));",
+                  "const systemData = pm.response.json();",
+                  "pm.collectionVariables.set('systemApiKey', systemData.apiKey);",
+                  "pm.collectionVariables.set('systemId', systemData.id);",
+                  "pm.test('apiKey captured', () => pm.expect(systemData.apiKey).to.match(/^bcn_live_/));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List Systems",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/systems",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "systems"
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "3. Ingestion (error payloads)",
+      "description": "Uses X-Beacon-Key: {{systemApiKey}} — run \"Systems > Create System\" first. Each request is a realistic error report from a different stack/language, matching docs/integration-guide.md.",
+      "item": [
+        {
+          "name": "Node/TS — TypeError (fatal)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Beacon-Key",
+                "value": "{{systemApiKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/events",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "events"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"TypeError\",\n  \"message\": \"Cannot read properties of undefined (reading 'id')\",\n  \"level\": \"fatal\",\n  \"environment\": \"production\",\n  \"release\": \"1.4.2\",\n  \"stacktrace\": \"TypeError: Cannot read properties of undefined (reading 'id')\\n    at getUserId (/app/src/services/user.service.ts:42:18)\\n    at processOrder (/app/src/services/order.service.ts:87:22)\\n    at async OrderController.create (/app/src/controllers/order.controller.ts:31:9)\",\n  \"tags\": {\n    \"service\": \"checkout-api\",\n    \"endpoint\": \"POST /orders\"\n  },\n  \"extra\": {\n    \"requestId\": \"req_8f3ak2\",\n    \"userId\": 1042\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 202', () => pm.response.to.have.status(202));",
+                  "pm.test('Queued', () => pm.expect(pm.response.json().status).to.eql('queued'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Node/TS — same TypeError again (tests grouping)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Beacon-Key",
+                "value": "{{systemApiKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/events",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "events"
+              ]
+            },
+            "description": "Same type/message/top-stack-frames as the request above — Beacon should group this into the SAME issue and bump its count instead of creating a new one. Check via \"Issues > List Issues\" after sending both.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"TypeError\",\n  \"message\": \"Cannot read properties of undefined (reading 'id')\",\n  \"level\": \"error\",\n  \"environment\": \"production\",\n  \"release\": \"1.4.3\",\n  \"stacktrace\": \"TypeError: Cannot read properties of undefined (reading 'id')\\n    at getUserId (/app/src/services/user.service.ts:42:18)\\n    at processOrder (/app/src/services/order.service.ts:87:22)\\n    at async OrderController.create (/app/src/controllers/order.controller.ts:31:9)\",\n  \"tags\": {\n    \"service\": \"checkout-api\",\n    \"endpoint\": \"POST /orders\"\n  },\n  \"extra\": {\n    \"requestId\": \"req_02ffa9\",\n    \"userId\": 771\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 202', () => pm.response.to.have.status(202));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Java — NullPointerException (error, structured frames)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Beacon-Key",
+                "value": "{{systemApiKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/events",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "events"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"NullPointerException\",\n  \"message\": \"Cannot invoke \\\"User.getEmail()\\\" because \\\"user\\\" is null\",\n  \"level\": \"error\",\n  \"environment\": \"production\",\n  \"release\": \"2.3.0\",\n  \"stacktrace\": [\n    {\n      \"class\": \"com.beacon.example.UserService\",\n      \"method\": \"sendWelcomeEmail\",\n      \"file\": \"UserService.java\",\n      \"line\": 58\n    },\n    {\n      \"class\": \"com.beacon.example.UserController\",\n      \"method\": \"register\",\n      \"file\": \"UserController.java\",\n      \"line\": 33\n    },\n    {\n      \"class\": \"org.springframework.web.method.support.InvocableHandlerMethod\",\n      \"method\": \"invoke\",\n      \"file\": \"InvocableHandlerMethod.java\",\n      \"line\": 205\n    }\n  ],\n  \"tags\": {\n    \"service\": \"accounts-api\"\n  },\n  \"extra\": {\n    \"userId\": \"8ac112\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 202', () => pm.response.to.have.status(202));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Python — KeyError (error)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Beacon-Key",
+                "value": "{{systemApiKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/events",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "events"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"KeyError\",\n  \"message\": \"'shipping_address'\",\n  \"level\": \"error\",\n  \"environment\": \"staging\",\n  \"release\": \"0.9.1\",\n  \"stacktrace\": \"Traceback (most recent call last):\\n  File \\\"/app/orders/views.py\\\", line 44, in create_order\\n    address = payload[\\\"shipping_address\\\"]\\nKeyError: 'shipping_address'\",\n  \"tags\": {\n    \"service\": \"orders-worker\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 202', () => pm.response.to.have.status(202));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Ruby — NoMethodError (warning)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Beacon-Key",
+                "value": "{{systemApiKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/events",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "events"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"NoMethodError\",\n  \"message\": \"undefined method 'total_cents' for nil:NilClass\",\n  \"level\": \"warning\",\n  \"environment\": \"production\",\n  \"stacktrace\": \"app/models/invoice.rb:21:in 'calculate_total'\\napp/jobs/invoice_job.rb:9:in 'perform'\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 202', () => pm.response.to.have.status(202));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Deprecated endpoint usage (warning, no stacktrace)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Beacon-Key",
+                "value": "{{systemApiKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/events",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "events"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"DeprecationWarning\",\n  \"message\": \"Endpoint /v1/legacy-report is deprecated and will be removed on 2026-12-01\",\n  \"level\": \"warning\",\n  \"environment\": \"production\",\n  \"tags\": {\n    \"endpoint\": \"/v1/legacy-report\",\n    \"client\": \"mobile-app\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 202', () => pm.response.to.have.status(202));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Slow query (info, minimal)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Beacon-Key",
+                "value": "{{systemApiKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/events",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "events"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"SlowQuery\",\n  \"message\": \"Query exceeded 500ms threshold (812ms)\",\n  \"level\": \"info\",\n  \"environment\": \"production\",\n  \"extra\": {\n    \"query\": \"SELECT * FROM orders WHERE customer_id = ?\",\n    \"durationMs\": 812\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 202', () => pm.response.to.have.status(202));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "DB connection timeout (fatal, rich extra)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Beacon-Key",
+                "value": "{{systemApiKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/events",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "events"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"ConnectionTimeoutError\",\n  \"message\": \"Could not connect to database after 3 retries\",\n  \"level\": \"fatal\",\n  \"environment\": \"production\",\n  \"release\": \"1.4.2\",\n  \"stacktrace\": \"ConnectionTimeoutError: Could not connect to database after 3 retries\\n    at Pool.connect (/app/node_modules/pg/lib/pool.js:45:11)\\n    at Database.query (/app/src/db/client.ts:22:20)\",\n  \"tags\": {\n    \"service\": \"checkout-api\",\n    \"db\": \"postgres-primary\"\n  },\n  \"extra\": {\n    \"host\": \"db-primary.internal\",\n    \"port\": 5432,\n    \"retries\": 3,\n    \"timeoutMs\": 5000\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 202', () => pm.response.to.have.status(202));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Minimal valid payload (required fields only)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Beacon-Key",
+                "value": "{{systemApiKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/events",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "events"
+              ]
+            },
+            "description": "Smoke test — message/type/level are the only required fields.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"Error\",\n  \"message\": \"Something went wrong\",\n  \"level\": \"error\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 202', () => pm.response.to.have.status(202));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Explicit timestamp (backfilled event)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Beacon-Key",
+                "value": "{{systemApiKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/events",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "events"
+              ]
+            },
+            "description": "Shows the optional `timestamp` field — useful for backfilling/replaying old errors.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"PaymentDeclined\",\n  \"message\": \"Card declined by issuer (code 51)\",\n  \"level\": \"warning\",\n  \"environment\": \"production\",\n  \"timestamp\": \"2026-09-01T08:15:00.000Z\",\n  \"tags\": {\n    \"gateway\": \"stripe\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 202', () => pm.response.to.have.status(202));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "4. Ingestion — validation errors (sad path)",
+      "description": "Confirms the API rejects bad requests instead of silently accepting garbage.",
+      "item": [
+        {
+          "name": "Missing required field \"type\" -> 400",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Beacon-Key",
+                "value": "{{systemApiKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/events",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "events"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"message\": \"Payload is missing the type field\",\n  \"level\": \"error\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 400', () => pm.response.to.have.status(400));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Invalid level enum value -> 400",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Beacon-Key",
+                "value": "{{systemApiKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/events",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "events"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"Error\",\n  \"message\": \"Invalid level test\",\n  \"level\": \"critical\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 400', () => pm.response.to.have.status(400));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Missing X-Beacon-Key header -> 401",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/events",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "events"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"Error\",\n  \"message\": \"No API key sent\",\n  \"level\": \"error\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 401', () => pm.response.to.have.status(401));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "5. Issues",
+      "item": [
+        {
+          "name": "List Issues (paginated)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/issues?page=1&pageSize=25",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "issues?page=1&pageSize=25"
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "const issuesData = pm.response.json();",
+                  "if (issuesData.items && issuesData.items.length > 0) { pm.collectionVariables.set('issueId', issuesData.items[0].id); }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List Issues for this system",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/issues?systemId={{systemId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "issues?systemId={{systemId}}"
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Issue by id",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/issues/{{issueId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "issues",
+                "{{issueId}}"
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Issue events",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/issues/{{issueId}}/events",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "issues",
+                "{{issueId}}",
+                "events"
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Resolve Issue",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/issues/{{issueId}}/status",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "issues",
+                "{{issueId}}",
+                "status"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"resolved\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "6. KPIs",
+      "item": [
+        {
+          "name": "Overview",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/kpis/overview",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "kpis",
+                "overview"
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Overview for this system",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/kpis/systems/{{systemId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "kpis",
+                "systems",
+                "{{systemId}}"
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
